@@ -188,7 +188,6 @@
       transition: all 0.3s;
     }
     .template-btn:hover { background: rgba(102,126,234,0.3); border-color: #667eea; }
-    .error-msg { background: rgba(244,67,54,0.2); padding: 15px; border-radius: 10px; margin-top: 15px; border-left: 3px solid #f44336; }
     footer {
       text-align: center;
       padding: 30px;
@@ -223,7 +222,7 @@
             <option value="Fintech">Fintech</option>
             <option value="Healthcare">Healthcare / Biotech</option>
             <option value="E-commerce">E-commerce / Retail</option>
-            <option value="AI/ML">Technology</option>
+            <option value="Technology">Technology</option>
             <option value="EdTech">EdTech</option>
             <option value="CleanTech">CleanTech / Sustainability</option>
             <option value="Other">Other</option>
@@ -256,10 +255,6 @@
           <button class="template-btn" ng-click="loadTemplate('saas')">SaaS Example</button>
           <button class="template-btn" ng-click="loadTemplate('fintech')">Fintech Example</button>
           <button class="template-btn" ng-click="loadTemplate('health')">HealthTech Example</button>
-        </div>
-        
-        <div class="error-msg" ng-show="error">
-          <strong>⚠️ Error:</strong> {{error}}
         </div>
       </div>
       
@@ -331,11 +326,10 @@
   
   <script>
     angular.module('pitchAnalyzerApp', [])
-    .controller('MainController', ['$scope', function($scope) {
+    .controller('MainController', ['$scope', '$timeout', function($scope, $timeout) {
       $scope.pitch = { name: '', industry: '', stage: '', content: '' };
       $scope.results = null;
       $scope.isLoading = false;
-      $scope.error = '';
       
       const templates = {
         saas: {
@@ -391,7 +385,6 @@ Team: CEO (physician with 15 years clinical experience), CTO (NLP researcher fro
       $scope.loadTemplate = function(type) {
         $scope.pitch = angular.copy(templates[type]);
         $scope.results = null;
-        $scope.error = '';
       };
       
       $scope.isValidPitch = function() {
@@ -412,69 +405,163 @@ Team: CEO (physician with 15 years clinical experience), CTO (NLP researcher fro
         return 'linear-gradient(90deg, #ef5350, #f44336)';
       };
       
-      $scope.analyzePitch = async function() {
-        $scope.isLoading = true;
-        $scope.error = '';
-        $scope.results = null;
-        $scope.$apply();
+      function analyzeContent(content) {
+        var text = content.toLowerCase();
+        var scores = {};
         
-        try {
-          const response = await fetch('https://api.anthropic.com/v1/messages', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              model: 'claude-sonnet-4-20250514',
-              max_tokens: 1000,
-              messages: [{
-                role: 'user',
-                content: `Analyze this startup pitch and provide a detailed evaluation. Return ONLY valid JSON with no markdown or extra text.
-
-Startup: ${$scope.pitch.name}
-Industry: ${$scope.pitch.industry}
-Funding Stage: ${$scope.pitch.stage}
-
-Pitch:
-${$scope.pitch.content}
-
-Evaluate and return this exact JSON structure:
-{
-  "overallScore": <number 0-100>,
-  "criteria": [
-    {"name": "Problem Clarity", "score": <1-10>},
-    {"name": "Solution Value", "score": <1-10>},
-    {"name": "Market Opportunity", "score": <1-10>},
-    {"name": "Business Model", "score": <1-10>},
-    {"name": "Traction Evidence", "score": <1-10>},
-    {"name": "Team Strength", "score": <1-10>},
-    {"name": "Competitive Edge", "score": <1-10>},
-    {"name": "Pitch Clarity", "score": <1-10>}
-  ],
-  "strengths": ["strength1", "strength2", "strength3"],
-  "improvements": ["improvement1", "improvement2", "improvement3"]
-}
-
-Be specific and actionable in feedback. Score fairly based on the pitch quality and completeness for the stated funding stage.`
-              }]
-            })
-          });
-          
-          const data = await response.json();
-          
-          if (data.error) {
-            throw new Error(data.error.message || 'API error occurred');
-          }
-          
-          const text = data.content[0].text;
-          const cleanJson = text.replace(/```json|```/g, '').trim();
-          $scope.results = JSON.parse(cleanJson);
-          
-        } catch (err) {
-          $scope.error = err.message || 'Failed to analyze pitch. Please try again.';
-          console.error('Error:', err);
+        // Problem Clarity (check for problem-related keywords)
+        var problemWords = ['problem', 'issue', 'challenge', 'pain', 'struggle', 'difficult', 'waste', 'lose', 'cost', 'expensive'];
+        var problemScore = 4;
+        problemWords.forEach(function(word) {
+          if (text.includes(word)) problemScore += 0.6;
+        });
+        scores.problem = Math.min(10, Math.round(problemScore));
+        
+        // Solution Value
+        var solutionWords = ['solution', 'platform', 'app', 'software', 'service', 'product', 'tool', 'system', 'automat', 'eliminat', 'reduc', 'improv', 'increase'];
+        var solutionScore = 4;
+        solutionWords.forEach(function(word) {
+          if (text.includes(word)) solutionScore += 0.5;
+        });
+        scores.solution = Math.min(10, Math.round(solutionScore));
+        
+        // Market Opportunity
+        var marketWords = ['market', 'tam', 'sam', 'billion', 'million', 'trillion', 'customer', 'user', 'segment', 'target', 'industry', 'growing', 'annual'];
+        var marketScore = 3;
+        marketWords.forEach(function(word) {
+          if (text.includes(word)) marketScore += 0.6;
+        });
+        scores.market = Math.min(10, Math.round(marketScore));
+        
+        // Business Model
+        var bizWords = ['revenue', 'price', 'subscription', 'fee', 'commission', 'margin', 'monetiz', 'pricing', '$', 'per month', 'annually', 'model'];
+        var bizScore = 3;
+        bizWords.forEach(function(word) {
+          if (text.includes(word)) bizScore += 0.7;
+        });
+        scores.business = Math.min(10, Math.round(bizScore));
+        
+        // Traction Evidence
+        var tractionWords = ['customer', 'user', 'revenue', 'arr', 'mrr', 'growth', 'download', 'active', 'paying', 'partner', 'pilot', 'loi', '%', 'yoy', 'mom'];
+        var tractionScore = 3;
+        tractionWords.forEach(function(word) {
+          if (text.includes(word)) tractionScore += 0.6;
+        });
+        scores.traction = Math.min(10, Math.round(tractionScore));
+        
+        // Team Strength
+        var teamWords = ['team', 'ceo', 'cto', 'cfo', 'founder', 'experience', 'years', 'ex-', 'former', 'advisor', 'engineer', 'expert', 'phd', 'mba'];
+        var teamScore = 3;
+        teamWords.forEach(function(word) {
+          if (text.includes(word)) teamScore += 0.7;
+        });
+        scores.team = Math.min(10, Math.round(teamScore));
+        
+        // Competitive Edge
+        var compWords = ['unique', 'different', 'first', 'only', 'patent', 'proprietary', 'competitive', 'advantage', 'better', 'faster', 'cheaper', 'exclusive'];
+        var compScore = 4;
+        compWords.forEach(function(word) {
+          if (text.includes(word)) compScore += 0.7;
+        });
+        scores.competitive = Math.min(10, Math.round(compScore));
+        
+        // Pitch Clarity (based on length and structure)
+        var clarityScore = 5;
+        if (content.length > 200) clarityScore += 1;
+        if (content.length > 500) clarityScore += 1;
+        if (content.length > 800) clarityScore += 1;
+        if (content.includes('\n')) clarityScore += 1;
+        if (content.split('.').length > 5) clarityScore += 1;
+        scores.clarity = Math.min(10, Math.round(clarityScore));
+        
+        return scores;
+      }
+      
+      function generateStrengths(scores, pitch) {
+        var strengths = [];
+        var text = pitch.content.toLowerCase();
+        
+        if (scores.problem >= 7) strengths.push("Clear problem statement that resonates with target audience");
+        if (scores.solution >= 7) strengths.push("Well-defined solution with clear value proposition");
+        if (scores.market >= 7) strengths.push("Strong market opportunity with good TAM analysis");
+        if (scores.business >= 7) strengths.push("Solid business model with clear revenue streams");
+        if (scores.traction >= 7) strengths.push("Impressive traction metrics demonstrating product-market fit");
+        if (scores.team >= 7) strengths.push("Experienced team with relevant background");
+        if (scores.competitive >= 7) strengths.push("Clear competitive advantages identified");
+        if (scores.clarity >= 7) strengths.push("Well-structured and easy to understand pitch");
+        
+        if (text.includes('customer') && text.includes('revenue')) {
+          strengths.push("Good connection between customer acquisition and revenue");
+        }
+        if (text.includes('%') || text.includes('growth')) {
+          strengths.push("Quantified metrics add credibility to claims");
         }
         
-        $scope.isLoading = false;
-        $scope.$apply();
+        if (strengths.length < 3) {
+          strengths.push("Shows passion and understanding of the space");
+          strengths.push("Addresses a real market need");
+          strengths.push("Has potential for scalability");
+        }
+        
+        return strengths.slice(0, 4);
+      }
+      
+      function generateImprovements(scores, pitch) {
+        var improvements = [];
+        
+        if (scores.problem < 7) improvements.push("Quantify the problem more - add specific data on market pain points and costs");
+        if (scores.solution < 7) improvements.push("Explain your unique approach and why your solution is 10x better");
+        if (scores.market < 7) improvements.push("Include TAM/SAM/SOM analysis with credible market size data");
+        if (scores.business < 7) improvements.push("Detail your pricing strategy, unit economics, and path to profitability");
+        if (scores.traction < 7) improvements.push("Add more specific traction metrics: users, revenue, growth rate, retention");
+        if (scores.team < 7) improvements.push("Highlight team's relevant experience and unfair advantages");
+        if (scores.competitive < 7) improvements.push("Clarify your moat and sustainable competitive advantages");
+        if (scores.clarity < 7) improvements.push("Structure your pitch better with clear sections and flow");
+        
+        if (!pitch.content.toLowerCase().includes('competitor')) {
+          improvements.push("Address competitive landscape and how you differentiate");
+        }
+        if (!pitch.content.toLowerCase().includes('risk')) {
+          improvements.push("Acknowledge key risks and your mitigation strategies");
+        }
+        
+        return improvements.slice(0, 4);
+      }
+      
+      $scope.analyzePitch = function() {
+        $scope.isLoading = true;
+        $scope.results = null;
+        
+        $timeout(function() {
+          var scores = analyzeContent($scope.pitch.content);
+          
+          var overall = Math.round(
+            (scores.problem + scores.solution + scores.market + scores.business + 
+             scores.traction + scores.team + scores.competitive + scores.clarity) / 8 * 10
+          );
+          
+          // Add some variance based on stage
+          if ($scope.pitch.stage === 'Pre-seed') overall = Math.min(100, overall + 5);
+          if ($scope.pitch.stage === 'Series B+') overall = Math.max(0, overall - 5);
+          
+          $scope.results = {
+            overallScore: overall,
+            criteria: [
+              { name: "Problem Clarity", score: scores.problem },
+              { name: "Solution Value", score: scores.solution },
+              { name: "Market Opportunity", score: scores.market },
+              { name: "Business Model", score: scores.business },
+              { name: "Traction Evidence", score: scores.traction },
+              { name: "Team Strength", score: scores.team },
+              { name: "Competitive Edge", score: scores.competitive },
+              { name: "Pitch Clarity", score: scores.clarity }
+            ],
+            strengths: generateStrengths(scores, $scope.pitch),
+            improvements: generateImprovements(scores, $scope.pitch)
+          };
+          
+          $scope.isLoading = false;
+        }, 1500);
       };
     }]);
   </script>
